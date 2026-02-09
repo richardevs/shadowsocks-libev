@@ -1144,18 +1144,15 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
 
         if (verbose) {
             char peer_ip[INET6_ADDRSTRLEN] = {0};
-            char peer_port_str[8] = {0};
             struct sockaddr_storage peer_addr;
             socklen_t peer_addr_len = sizeof(peer_addr);
             if (getpeername(server->fd, (struct sockaddr *)&peer_addr, &peer_addr_len) == 0) {
                 if (peer_addr.ss_family == AF_INET) {
                     struct sockaddr_in *s = (struct sockaddr_in *)&peer_addr;
                     inet_ntop(AF_INET, &s->sin_addr, peer_ip, INET_ADDRSTRLEN);
-                    snprintf(peer_port_str, sizeof(peer_port_str), "%hu", ntohs(s->sin_port));
                 } else if (peer_addr.ss_family == AF_INET6) {
                     struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)&peer_addr;
                     inet_ntop(AF_INET6, &s6->sin6_addr, peer_ip, INET6_ADDRSTRLEN);
-                    snprintf(peer_port_str, sizeof(peer_port_str), "%hu", ntohs(s6->sin6_port));
                 }
             }
             if (peer_ip[0] == '\0') {
@@ -1163,8 +1160,6 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
                 peer_ip[0] = '-';
                 peer_ip[1] = '\0';
             }
-            if (peer_port_str[0] == '\0')
-                strcpy(peer_port_str, "-");
 
             if ((atyp & ADDRTYPE_MASK) == 4)
                 LOGI("[%s] %s connect to [%s]:%d", remote_port ? remote_port : "-", peer_ip, host, ntohs(port));
