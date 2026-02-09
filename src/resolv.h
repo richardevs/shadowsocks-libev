@@ -40,7 +40,7 @@ struct resolv_query;
 int resolv_init(struct ev_loop *, char *, int);
 void resolv_start(const char *hostname, uint16_t port,
                   void (*client_cb)(struct sockaddr *, void *),
-                  void (*free_cb)(void *), void *data);
+                  void (*free_cb)(void *), void *data, const char *listen_port);
 void resolv_shutdown(struct ev_loop *);
 
 #endif

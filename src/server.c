@@ -1143,10 +1143,33 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
         }
 
         if (verbose) {
+            char peer_ip[INET6_ADDRSTRLEN] = {0};
+            char peer_port_str[8] = {0};
+            struct sockaddr_storage peer_addr;
+            socklen_t peer_addr_len = sizeof(peer_addr);
+            if (getpeername(server->fd, (struct sockaddr *)&peer_addr, &peer_addr_len) == 0) {
+                if (peer_addr.ss_family == AF_INET) {
+                    struct sockaddr_in *s = (struct sockaddr_in *)&peer_addr;
+                    inet_ntop(AF_INET, &s->sin_addr, peer_ip, INET_ADDRSTRLEN);
+                    snprintf(peer_port_str, sizeof(peer_port_str), "%hu", ntohs(s->sin_port));
+                } else if (peer_addr.ss_family == AF_INET6) {
+                    struct sockaddr_in6 *s6 = (struct sockaddr_in6 *)&peer_addr;
+                    inet_ntop(AF_INET6, &s6->sin6_addr, peer_ip, INET6_ADDRSTRLEN);
+                    snprintf(peer_port_str, sizeof(peer_port_str), "%hu", ntohs(s6->sin6_port));
+                }
+            }
+            if (peer_ip[0] == '\0') {
+                /* peer IP unknown — use '-' as placeholder */
+                peer_ip[0] = '-';
+                peer_ip[1] = '\0';
+            }
+            if (peer_port_str[0] == '\0')
+                strcpy(peer_port_str, "-");
+
             if ((atyp & ADDRTYPE_MASK) == 4)
-                LOGI("[%s] connect to [%s]:%d", remote_port, host, ntohs(port));
+                LOGI("[%s] %s connect to [%s]:%d", remote_port ? remote_port : "-", peer_ip, host, ntohs(port));
             else
-                LOGI("[%s] connect to %s:%d", remote_port, host, ntohs(port));
+                LOGI("[%s] %s connect to %s:%d", remote_port ? remote_port : "-", peer_ip, host, ntohs(port));
         }
 
         if (!need_query) {
@@ -1185,7 +1208,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
             snprintf(query->hostname, MAX_HOSTNAME_LEN, "%s", host);
 
             server->stage = STAGE_RESOLVE;
-            resolv_start(host, port, resolv_cb, resolv_free_cb, query);
+            resolv_start(host, port, resolv_cb, resolv_free_cb, query, remote_port);
         }
 
         return;
@@ -1290,7 +1313,22 @@ resolv_cb(struct sockaddr *addr, void *data)
         close_and_free_server(EV_A_ server);
     } else {
         if (verbose) {
-            LOGI("successfully resolved %s", query->hostname);
+            char ip[INET6_ADDRSTRLEN];
+            const void *addr_ptr = NULL;
+            int family           = addr->sa_family;
+
+            if (family == AF_INET) {
+                addr_ptr = &((struct sockaddr_in *)addr)->sin_addr;
+            } else if (family == AF_INET6) {
+                addr_ptr = &((struct sockaddr_in6 *)addr)->sin6_addr;
+            }
+
+            if (addr_ptr != NULL
+                && inet_ntop(family, addr_ptr, ip, sizeof(ip)) != NULL) {
+                LOGI("successfully resolved %s -> %s", query->hostname, ip);
+            } else {
+                LOGI("successfully resolved %s", query->hostname);
+            }
         }
 
         struct addrinfo info;

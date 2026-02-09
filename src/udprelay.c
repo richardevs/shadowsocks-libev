@@ -1421,7 +1421,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
             query_ctx->remote_ctx = remote_ctx;
         }
 
-        resolv_start(host, htons(atoi(port)), resolv_cb, resolv_free_cb, query_ctx);
+        resolv_start(host, htons(atoi(port)), resolv_cb, resolv_free_cb, query_ctx, NULL);
     }
 #endif
 

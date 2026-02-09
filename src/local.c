@@ -84,6 +84,10 @@ int tcp_incoming_rcvbuf = 0;
 int tcp_outgoing_sndbuf = 0;
 int tcp_outgoing_rcvbuf = 0;
 
+/* remote_port is set from CLI/config; define it at file scope so functions above can reference
+   it during logging */
+char *remote_port = NULL;
+
 #ifdef __ANDROID__
 int vpn        = 0;
 uint64_t tx    = 0;
@@ -442,12 +446,31 @@ server_handshake(EV_P_ ev_io *w, buffer_t *buf)
     }
 
     if (verbose) {
+        char peer_ip[INET6_ADDRSTRLEN] = {0};
+        char peer_port_str[8] = {0};
+        struct sockaddr_storage peer_addr;
+        socklen_t peer_addr_len = sizeof(peer_addr);
+        if (getpeername(server->fd, (struct sockaddr *)&peer_addr, &peer_addr_len) == 0) {
+            if (peer_addr.ss_family == AF_INET) {
+                struct sockaddr_in *s = (struct sockaddr_in *)&peer_addr;
+                inet_ntop(AF_INET, &s->sin_addr, peer_ip, INET_ADDRSTRLEN);
+                snprintf(peer_port_str, sizeof(peer_port_str), "%hu", ntohs(s->sin_port));
+            } else if (peer_addr.ss_family == AF_INET6) {
+                struct sockaddr_in6 *s = (struct sockaddr_in6 *)&peer_addr;
+                inet_ntop(AF_INET6, &s->sin6_addr, peer_ip, INET6_ADDRSTRLEN);
+                snprintf(peer_port_str, sizeof(peer_port_str), "%hu", ntohs(s->sin6_port));
+            }
+        }
+        if (peer_ip[0] == '\0')
+            strcpy(peer_ip, "-");
+        if (peer_port_str[0] == '\0')
+            strcpy(peer_port_str, "-");
         if (atyp == SOCKS5_ATYP_DOMAIN)
-            LOGI("connect to %s:%s", host, port);
+            LOGI("[%s] %s connect to %s:%s", remote_port ? remote_port : "-", peer_ip, host, port);
         else if (atyp == SOCKS5_ATYP_IPV4)
-            LOGI("connect to %s:%s", ip, port);
+            LOGI("[%s] %s connect to %s:%s", remote_port ? remote_port : "-", peer_ip, ip, port);
         else if (atyp == SOCKS5_ATYP_IPV6)
-            LOGI("connect to [%s]:%s", ip, port);
+            LOGI("[%s] %s connect to [%s]:%s", remote_port ? remote_port : "-", peer_ip, ip, port);
     }
 
     if (acl
@@ -1447,7 +1470,6 @@ main(int argc, char **argv)
 
     int remote_num = 0;
     ss_addr_t remote_addr[MAX_REMOTE_NUM];
-    char *remote_port = NULL;
 
     memset(remote_addr, 0, sizeof(ss_addr_t) * MAX_REMOTE_NUM);
     srand(time(NULL));

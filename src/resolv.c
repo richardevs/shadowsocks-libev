@@ -36,6 +36,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <errno.h>
 #include <unistd.h>
 #else
@@ -89,6 +90,8 @@ struct resolv_query {
     uint16_t port;
 
     void *data;
+
+    char *listen_port;
 
     int is_closed;
 };
@@ -208,7 +211,7 @@ resolv_shutdown(struct ev_loop *loop)
 void
 resolv_start(const char *hostname, uint16_t port,
              void (*client_cb)(struct sockaddr *, void *),
-             void (*free_cb)(void *), void *data)
+             void (*free_cb)(void *), void *data, const char *listen_port)
 {
     /*
      * Wrap c-ares's call back in our own
@@ -224,12 +227,19 @@ resolv_start(const char *hostname, uint16_t port,
     query->data           = data;
     query->free_cb        = free_cb;
 
+    if (listen_port != NULL) {
+        query->listen_port = ss_malloc(strlen(listen_port) + 1);
+        strcpy(query->listen_port, listen_port);
+    } else {
+        query->listen_port = NULL;
+    }
+
     query->requests[0] = AF_INET;
     query->requests[1] = AF_INET6;
 
     ares_gethostbyname(default_ctx.channel, hostname, AF_INET, dns_query_v4_cb, query);
     ares_gethostbyname(default_ctx.channel, hostname, AF_INET6, dns_query_v6_cb, query);
-}
+} 
 
 /*
  * Wrapper for client callback we provide to c-ares
@@ -252,7 +262,17 @@ dns_query_v4_cb(void *arg, int status, int timeouts, struct hostent *he)
     }
 
     if (verbose) {
-        LOGI("found address name v4 address %s", he->h_name);
+        LOGI("[%s] found address name v4 address %s",
+             query->listen_port ? query->listen_port : "-", he->h_name);
+        for (i = 0; he->h_addr_list[i]; i++) {
+            char addr_buf[INET_ADDRSTRLEN];
+            if (inet_ntop(AF_INET, he->h_addr_list[i], addr_buf,
+                          sizeof(addr_buf))) {
+                LOGI("[%s] resolved v4 %s -> %s",
+                     query->listen_port ? query->listen_port : "-",
+                     he->h_name, addr_buf);
+            }
+        }
     }
 
     n = 0;
@@ -314,7 +334,17 @@ dns_query_v6_cb(void *arg, int status, int timeouts, struct hostent *he)
     }
 
     if (verbose) {
-        LOGI("found address name v6 address %s", he->h_name);
+        LOGI("[%s] found address name v6 address %s",
+             query->listen_port ? query->listen_port : "-", he->h_name);
+        for (i = 0; he->h_addr_list[i]; i++) {
+            char addr_buf[INET6_ADDRSTRLEN];
+            if (inet_ntop(AF_INET6, he->h_addr_list[i], addr_buf,
+                          sizeof(addr_buf))) {
+                LOGI("[%s] resolved v6 %s -> %s",
+                     query->listen_port ? query->listen_port : "-",
+                     he->h_name, addr_buf);
+            }
+        }
     }
 
     n = 0;
@@ -381,13 +411,16 @@ process_client_callback(struct resolv_query *query)
 
     ss_free(query->responses);
 
+    if (query->listen_port != NULL)
+        ss_free(query->listen_port);
+
     if (query->free_cb != NULL)
         query->free_cb(query->data);
     else
         ss_free(query->data);
 
     ss_free(query);
-}
+} 
 
 static struct sockaddr *
 choose_ipv4_first(struct resolv_query *query)
